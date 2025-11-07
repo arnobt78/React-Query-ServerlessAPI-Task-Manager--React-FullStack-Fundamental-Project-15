@@ -1,4 +1,21 @@
-const { nanoid } = require("nanoid");
+let nanoid;
+
+try {
+  ({ nanoid } = require("nanoid"));
+} catch (error) {
+  const crypto = require("crypto");
+  nanoid = (size = 21) => {
+    let id = "";
+    while (id.length < size) {
+      id += crypto
+        .randomBytes(size)
+        .toString("base64")
+        .replace(/[^a-zA-Z0-9]/g, "");
+    }
+    return id.slice(0, size);
+  };
+  console.warn("nanoid import failed; using crypto fallback", error);
+}
 
 // Shared in-memory storage for demo purposes
 // In production, you'd want to use a database
