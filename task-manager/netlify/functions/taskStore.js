@@ -76,9 +76,10 @@ const buildDefaultTasks = () => [
 let store;
 let usingFallbackStore = false;
 let fallbackTasks = buildDefaultTasks();
+let connectAttempted = false;
 
 export const initializeStore = async (event) => {
-  if (store || usingFallbackStore) {
+  if (store) {
     return;
   }
 
@@ -88,16 +89,24 @@ export const initializeStore = async (event) => {
   }
 
   try {
-    if (event?.blobs) {
-      connectLambda(event);
+    if (!connectAttempted) {
+      try {
+        connectLambda(event ?? {});
+      } catch (connectError) {
+        console.warn("connectLambda failed", connectError);
+      }
+      connectAttempted = true;
     }
+
     store = getStore(STORE_NAME);
     const existing = await store.get(STORE_KEY, { type: "json" });
     if (!Array.isArray(existing)) {
       const seeded = buildDefaultTasks();
       await store.setJSON(STORE_KEY, seeded);
     }
+    usingFallbackStore = false;
   } catch (error) {
+    store = undefined;
     usingFallbackStore = true;
     console.warn(
       "Netlify Blob store unavailable, using in-memory storage instead",
