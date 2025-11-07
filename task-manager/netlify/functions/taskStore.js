@@ -45,7 +45,14 @@ const loadNanoid = async () => {
 };
 
 if (!process.env.NETLIFY) {
-  nanoid = await loadNanoid();
+  loadNanoid()
+    .then((fn) => {
+      nanoid = fn;
+    })
+    .catch((error) => {
+      console.warn("Unable to set nanoid from async import", error);
+      nanoid = fallbackNanoid;
+    });
 }
 
 const buildDefaultTasks = () => [
