@@ -1,7 +1,9 @@
 {
   "name": "netlify-functions",
   "version": "1.0.0",
+  "type": "module",
   "dependencies": {
+    "@netlify/blobs": "^10.3.3",
     "nanoid": "^3.3.6"
   }
 }

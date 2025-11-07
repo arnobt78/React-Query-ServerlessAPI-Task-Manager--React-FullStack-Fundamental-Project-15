@@ -1,56 +1,54 @@
-let nanoid;
+import { randomBytes } from "crypto";
+import { connectLambda, getStore } from "@netlify/blobs";
 
-const createFallbackNanoid = () => {
-  const crypto = require("crypto");
-  return (size = 21) => {
+const STORE_NAME = "task-bud-store";
+const STORE_KEY = "task-list";
+
+const createFallbackNanoid =
+  () =>
+  (size = 21) => {
     let id = "";
     while (id.length < size) {
-      id += crypto
-        .randomBytes(size)
+      id += randomBytes(size)
         .toString("base64")
         .replace(/[^a-zA-Z0-9]/g, "");
     }
     return id.slice(0, size);
   };
-};
 
-const useFallback = (reason) => {
-  nanoid = createFallbackNanoid();
-  if (reason) {
-    console.warn("Using crypto fallback for nanoid", reason);
-  }
-};
+const fallbackNanoid = createFallbackNanoid();
+let nanoid = fallbackNanoid;
 
-const loadNanoid = () => {
+const loadNanoid = async () => {
   try {
-    ({ nanoid } = require("nanoid/non-secure"));
-    return;
+    const module = await import("nanoid/non-secure");
+    if (typeof module.nanoid === "function") {
+      return module.nanoid;
+    }
   } catch (nonSecureError) {
     console.warn(
-      "nanoid/non-secure import failed, trying ESM build",
+      "nanoid/non-secure import failed, trying nanoid default export",
       nonSecureError
     );
   }
 
   try {
-    ({ nanoid } = require("nanoid"));
+    const module = await import("nanoid");
+    if (typeof module.nanoid === "function") {
+      return module.nanoid;
+    }
   } catch (error) {
-    useFallback(error);
+    console.warn("Unable to import nanoid module, using fallback", error);
   }
+
+  return fallbackNanoid;
 };
 
-if (process.env.NETLIFY) {
-  useFallback(new Error("Netlify runtime does not support require('nanoid')"));
-} else {
-  loadNanoid();
-  if (typeof nanoid !== "function") {
-    useFallback(new Error("nanoid package unavailable"));
-  }
+if (!process.env.NETLIFY) {
+  nanoid = await loadNanoid();
 }
 
-// Shared in-memory storage for demo purposes
-// In production, you'd want to use a database
-let tasks = [
+const buildDefaultTasks = () => [
   {
     id: nanoid(),
     title: "walk the dog",
@@ -68,38 +66,95 @@ let tasks = [
   },
 ];
 
-const getTasks = () => {
-  return [...tasks];
+let store;
+let usingFallbackStore = false;
+let fallbackTasks = buildDefaultTasks();
+
+export const initializeStore = async (event) => {
+  if (store || usingFallbackStore) {
+    return;
+  }
+
+  if (!process.env.NETLIFY) {
+    usingFallbackStore = true;
+    return;
+  }
+
+  try {
+    if (event?.blobs) {
+      connectLambda(event);
+    }
+    store = getStore(STORE_NAME);
+    const existing = await store.get(STORE_KEY, { type: "json" });
+    if (!Array.isArray(existing)) {
+      const seeded = buildDefaultTasks();
+      await store.setJSON(STORE_KEY, seeded);
+    }
+  } catch (error) {
+    usingFallbackStore = true;
+    console.warn(
+      "Netlify Blob store unavailable, using in-memory storage instead",
+      error
+    );
+  }
 };
 
-const createTask = (title) => {
+const readTasks = async () => {
+  if (usingFallbackStore || !store) {
+    return [...fallbackTasks];
+  }
+
+  const storedTasks = await store.get(STORE_KEY, { type: "json" });
+  if (Array.isArray(storedTasks)) {
+    return storedTasks;
+  }
+
+  const seeded = buildDefaultTasks();
+  await store.setJSON(STORE_KEY, seeded);
+  return seeded;
+};
+
+const writeTasks = async (tasks) => {
+  if (usingFallbackStore || !store) {
+    fallbackTasks = tasks;
+    return;
+  }
+
+  await store.setJSON(STORE_KEY, tasks);
+};
+
+export const getTasks = async () => {
+  const tasks = await readTasks();
+  return tasks;
+};
+
+export const createTask = async (title) => {
+  const tasks = await readTasks();
   const newTask = {
     id: nanoid(),
     title,
     isDone: false,
   };
-  tasks.push(newTask);
+  const updated = [...tasks, newTask];
+  await writeTasks(updated);
   return newTask;
 };
 
-const updateTask = (taskId, isDone) => {
-  tasks = tasks.map((task) => {
+export const updateTask = async (taskId, isDone) => {
+  const tasks = await readTasks();
+  const updated = tasks.map((task) => {
     if (task.id === taskId) {
       return { ...task, isDone };
     }
     return task;
   });
+  await writeTasks(updated);
   return true;
 };
 
-const removeTask = (taskId) => {
-  tasks = tasks.filter((task) => task.id !== taskId);
+export const removeTask = async (taskId) => {
+  const tasks = await readTasks();
+  const updated = tasks.filter((task) => task.id !== taskId);
+  await writeTasks(updated);
   return true;
-};
-
-module.exports = {
-  getTasks,
-  createTask,
-  updateTask,
-  removeTask,
 };

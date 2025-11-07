@@ -1,4 +1,4 @@
-const { getTasks, createTask } = require("./taskStore");
+import { createTask, getTasks, initializeStore } from "./taskStore.js";
 
 const jsonResponse = (statusCode, body) => ({
   statusCode,
@@ -11,14 +11,16 @@ const jsonResponse = (statusCode, body) => ({
   body: JSON.stringify(body),
 });
 
-exports.handler = async (event, context) => {
+export const handler = async (event) => {
   // Handle preflight CORS requests
   if (event.httpMethod === "OPTIONS") {
     return jsonResponse(200, {});
   }
 
+  await initializeStore(event);
+
   if (event.httpMethod === "GET") {
-    const taskList = getTasks();
+    const taskList = await getTasks();
     return jsonResponse(200, { taskList });
   }
 
@@ -29,7 +31,7 @@ exports.handler = async (event, context) => {
       if (!title) {
         return jsonResponse(400, { msg: "please provide title" });
       }
-      const task = createTask(title);
+      const task = await createTask(title);
       return jsonResponse(200, { task });
     } catch (error) {
       console.error("POST Error:", error);

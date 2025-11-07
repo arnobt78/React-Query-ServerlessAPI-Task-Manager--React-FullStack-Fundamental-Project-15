@@ -1,4 +1,4 @@
-const { updateTask, removeTask } = require("./taskStore");
+import { initializeStore, removeTask, updateTask } from "./taskStore.js";
 
 const jsonResponse = (statusCode, body) => ({
   statusCode,
@@ -20,11 +20,13 @@ const extractTaskId = (event) => {
   return parts[parts.length - 1] || "";
 };
 
-exports.handler = async (event, context) => {
+export const handler = async (event) => {
   // Handle preflight CORS requests
   if (event.httpMethod === "OPTIONS") {
     return jsonResponse(200, {});
   }
+
+  await initializeStore(event);
 
   const taskId = extractTaskId(event);
   if (!taskId) {
@@ -39,7 +41,7 @@ exports.handler = async (event, context) => {
         return jsonResponse(400, { msg: "please provide isDone boolean" });
       }
 
-      updateTask(taskId, isDone);
+      await updateTask(taskId, isDone);
       return jsonResponse(200, { msg: "task updated" });
     } catch (error) {
       console.error("PATCH Error:", error);
@@ -49,7 +51,7 @@ exports.handler = async (event, context) => {
 
   if (event.httpMethod === "DELETE") {
     try {
-      removeTask(taskId);
+      await removeTask(taskId);
       return jsonResponse(200, { msg: "task removed" });
     } catch (error) {
       console.error("DELETE Error:", error);
