@@ -7,7 +7,7 @@ export const useFetchTasks = () => {
     queryKey: ["tasks"],
     queryFn: async () => {
       try {
-        const { data } = await customFetch.get("/");
+        const { data } = await customFetch.get("");
         return data;
       } catch (error) {
         console.error("API Error:", error);
@@ -38,7 +38,7 @@ export const useFetchTasks = () => {
 export const useCreateTask = () => {
   const queryClient = useQueryClient();
   const { mutate: createTask, isLoading } = useMutation({
-    mutationFn: (taskTitle) => customFetch.post("/", { title: taskTitle }),
+    mutationFn: (taskTitle) => customFetch.post("", { title: taskTitle }),
     onSuccess: ({ data }) => {
       queryClient.setQueryData(["tasks"], (oldData) => {
         if (!data || !data.task) {

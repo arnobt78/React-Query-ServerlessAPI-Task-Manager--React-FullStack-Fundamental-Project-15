@@ -1,9 +1,12 @@
-import { updateTask, removeTask } from '../../api/_lib/taskStore.js';
+const { updateTask, removeTask } = require("./taskStore");
 
 const jsonResponse = (statusCode, body) => ({
   statusCode,
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
   },
   body: JSON.stringify(body),
 });
@@ -13,39 +16,46 @@ const extractTaskId = (event) => {
     return event.pathParameters.id;
   }
 
-  const parts = event.path ? event.path.split('/') : [];
-  return parts[parts.length - 1] || '';
+  const parts = event.path ? event.path.split("/") : [];
+  return parts[parts.length - 1] || "";
 };
 
-export const handler = async (event) => {
-  const taskId = extractTaskId(event);
-  if (!taskId) {
-    return jsonResponse(400, { msg: 'task id required' });
+exports.handler = async (event, context) => {
+  // Handle preflight CORS requests
+  if (event.httpMethod === "OPTIONS") {
+    return jsonResponse(200, {});
   }
 
-  if (event.httpMethod === 'PATCH') {
+  const taskId = extractTaskId(event);
+  if (!taskId) {
+    return jsonResponse(400, { msg: "task id required" });
+  }
+
+  if (event.httpMethod === "PATCH") {
     try {
       const payload = event.body ? JSON.parse(event.body) : {};
       const { isDone } = payload;
-      if (typeof isDone !== 'boolean') {
-        return jsonResponse(400, { msg: 'please provide isDone boolean' });
+      if (typeof isDone !== "boolean") {
+        return jsonResponse(400, { msg: "please provide isDone boolean" });
       }
-      await updateTask(taskId, isDone);
-      return jsonResponse(200, { msg: 'task updated' });
+
+      updateTask(taskId, isDone);
+      return jsonResponse(200, { msg: "task updated" });
     } catch (error) {
-      return jsonResponse(500, { msg: 'something went wrong' });
+      console.error("PATCH Error:", error);
+      return jsonResponse(500, { msg: "something went wrong" });
     }
   }
 
-  if (event.httpMethod === 'DELETE') {
+  if (event.httpMethod === "DELETE") {
     try {
-      await removeTask(taskId);
-      return jsonResponse(200, { msg: 'task removed' });
+      removeTask(taskId);
+      return jsonResponse(200, { msg: "task removed" });
     } catch (error) {
-      return jsonResponse(500, { msg: 'something went wrong' });
+      console.error("DELETE Error:", error);
+      return jsonResponse(500, { msg: "something went wrong" });
     }
   }
 
-  return jsonResponse(405, { msg: 'method not allowed' });
+  return jsonResponse(405, { msg: "method not allowed" });
 };
-
