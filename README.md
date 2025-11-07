@@ -7,6 +7,8 @@ This repository bundles two complementary projects:
 
 Use this repo to explore modern full-stack patterns, study code organization, and learn how to migrate from a traditional Node server to serverless functions without losing the original implementation.
 
+<img width="1386" height="684" alt="Screenshot 2025-11-07 at 15 16 03" src="https://github.com/user-attachments/assets/e88ea46d-9fa7-4c09-b292-33f1b149c2b1" />
+
 ---
 
 ## Table of Contents
