@@ -7,9 +7,7 @@
 // export default customFetch;
 import axios from "axios";
 
-const defaultBaseURL =
-  import.meta.env.VITE_API_BASE_URL ||
-  "https://task-management-server-nyfr.onrender.com/api/tasks";
+const defaultBaseURL = import.meta.env.VITE_API_BASE_URL || "/api/tasks";
 
 // Remove trailing slash if present
 const cleanBaseURL = defaultBaseURL.replace(/\/$/, "");

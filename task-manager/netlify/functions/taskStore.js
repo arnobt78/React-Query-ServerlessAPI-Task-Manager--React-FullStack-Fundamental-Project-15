@@ -3,9 +3,7 @@ import { connectLambda, getStore } from "@netlify/blobs";
 
 const STORE_NAME = "task-bud-store";
 const STORE_KEY = "task-list";
-const REMOTE_BASE_URL =
-  process.env.REMOTE_TASKS_API ||
-  "https://task-management-server-nyfr.onrender.com/api/tasks";
+const REMOTE_BASE_URL = process.env.REMOTE_TASKS_API || "";
 
 const createFallbackNanoid =
   () =>
@@ -99,6 +97,14 @@ const useRemoteStorage = () => {
   return true;
 };
 
+const switchToMemoryStorage = (reason) => {
+  storageMode = "memory";
+  ensureFallbackContainer();
+  if (reason) {
+    console.warn("Falling back to in-memory storage", reason);
+  }
+};
+
 export const initializeStore = async (event) => {
   if (store) {
     return;
@@ -106,8 +112,7 @@ export const initializeStore = async (event) => {
 
   if (!process.env.NETLIFY) {
     if (!useRemoteStorage()) {
-      storageMode = "memory";
-      ensureFallbackContainer();
+      switchToMemoryStorage();
     }
     return;
   }
@@ -142,8 +147,7 @@ export const initializeStore = async (event) => {
   } catch (error) {
     store = undefined;
     if (!useRemoteStorage()) {
-      storageMode = "memory";
-      ensureFallbackContainer();
+      switchToMemoryStorage(error);
     }
     console.warn(
       "Netlify Blob store unavailable, using in-memory storage instead",
@@ -158,33 +162,42 @@ const remoteRequest = async (path = "", init = {}) => {
   }
 
   const url = `${REMOTE_BASE_URL}${path}`;
-  const response = await fetch(url, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(init.headers || {}),
-    },
-    ...init,
-  });
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(init.headers || {}),
+      },
+      ...init,
+    });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Remote request failed: ${response.status} ${text}`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Remote request failed: ${response.status} ${text}`);
+    }
+
+    if (response.status === 204) {
+      return null;
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error("Remote request error", { url, init, error });
+    throw error;
   }
-
-  if (response.status === 204) {
-    return null;
-  }
-
-  return response.json();
 };
 
 const readTasks = async () => {
   if (storageMode === "remote") {
-    const data = await remoteRequest();
-    if (data && Array.isArray(data.taskList)) {
-      return data.taskList;
+    try {
+      const data = await remoteRequest();
+      if (data && Array.isArray(data.taskList)) {
+        return data.taskList;
+      }
+      return [];
+    } catch (error) {
+      switchToMemoryStorage(error);
     }
-    return [];
   }
 
   if (storageMode === "memory" || !store) {
@@ -204,11 +217,15 @@ const readTasks = async () => {
 
 const writeTasks = async (tasks) => {
   if (storageMode === "remote") {
-    await remoteRequest("", {
-      method: "PUT",
-      body: JSON.stringify({ taskList: tasks }),
-    });
-    return;
+    try {
+      await remoteRequest("", {
+        method: "PUT",
+        body: JSON.stringify({ taskList: tasks }),
+      });
+      return;
+    } catch (error) {
+      switchToMemoryStorage(error);
+    }
   }
 
   if (storageMode === "memory" || !store) {
@@ -234,12 +251,16 @@ export const createTask = async (title) => {
   };
 
   if (storageMode === "remote") {
-    const data = await remoteRequest("", {
-      method: "POST",
-      body: JSON.stringify({ title }),
-    });
-    if (data?.task) {
-      return data.task;
+    try {
+      const data = await remoteRequest("", {
+        method: "POST",
+        body: JSON.stringify({ title }),
+      });
+      if (data?.task) {
+        return data.task;
+      }
+    } catch (error) {
+      switchToMemoryStorage(error);
     }
     // If remote request did not return a task, fall back to local logic
   }
@@ -259,11 +280,15 @@ export const updateTask = async (taskId, isDone) => {
   });
 
   if (storageMode === "remote") {
-    await remoteRequest(`/${taskId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ isDone }),
-    });
-    return true;
+    try {
+      await remoteRequest(`/${taskId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isDone }),
+      });
+      return true;
+    } catch (error) {
+      switchToMemoryStorage(error);
+    }
   }
 
   const updated = tasks.map((task) => {
@@ -282,8 +307,12 @@ export const updateTask = async (taskId, isDone) => {
 
 export const removeTask = async (taskId) => {
   if (storageMode === "remote") {
-    await remoteRequest(`/${taskId}`, { method: "DELETE" });
-    return true;
+    try {
+      await remoteRequest(`/${taskId}`, { method: "DELETE" });
+      return true;
+    } catch (error) {
+      switchToMemoryStorage(error);
+    }
   }
 
   const tasks = await readTasks();
