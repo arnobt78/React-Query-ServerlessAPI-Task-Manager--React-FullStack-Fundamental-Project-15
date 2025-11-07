@@ -73,9 +73,19 @@ const buildDefaultTasks = () => [
   },
 ];
 
+const FALLBACK_GLOBAL_KEY = "__taskBudFallbackStore__";
+
+const ensureFallbackContainer = () => {
+  if (!globalThis[FALLBACK_GLOBAL_KEY]) {
+    globalThis[FALLBACK_GLOBAL_KEY] = {
+      tasks: buildDefaultTasks(),
+    };
+  }
+  return globalThis[FALLBACK_GLOBAL_KEY];
+};
+
 let store;
 let usingFallbackStore = false;
-let fallbackTasks = buildDefaultTasks();
 let connectAttempted = false;
 
 export const initializeStore = async (event) => {
@@ -85,13 +95,20 @@ export const initializeStore = async (event) => {
 
   if (!process.env.NETLIFY) {
     usingFallbackStore = true;
+    ensureFallbackContainer();
     return;
   }
 
   try {
     if (!connectAttempted) {
       try {
-        connectLambda(event ?? {});
+        console.log("initializeStore: event keys", {
+          hasBlobs: Boolean(event?.blobs),
+          eventKeys: event ? Object.keys(event) : [],
+        });
+        if (event?.blobs) {
+          connectLambda(event);
+        }
       } catch (connectError) {
         console.warn("connectLambda failed", connectError);
       }
@@ -99,6 +116,10 @@ export const initializeStore = async (event) => {
     }
 
     store = getStore(STORE_NAME);
+    console.log("initializeStore: store ready", {
+      hasSetJSON: typeof store.setJSON === "function",
+      hasGet: typeof store.get === "function",
+    });
     const existing = await store.get(STORE_KEY, { type: "json" });
     if (!Array.isArray(existing)) {
       const seeded = buildDefaultTasks();
@@ -108,6 +129,7 @@ export const initializeStore = async (event) => {
   } catch (error) {
     store = undefined;
     usingFallbackStore = true;
+    ensureFallbackContainer();
     console.warn(
       "Netlify Blob store unavailable, using in-memory storage instead",
       error
@@ -117,7 +139,8 @@ export const initializeStore = async (event) => {
 
 const readTasks = async () => {
   if (usingFallbackStore || !store) {
-    return [...fallbackTasks];
+    const container = ensureFallbackContainer();
+    return [...container.tasks];
   }
 
   const storedTasks = await store.get(STORE_KEY, { type: "json" });
@@ -132,7 +155,8 @@ const readTasks = async () => {
 
 const writeTasks = async (tasks) => {
   if (usingFallbackStore || !store) {
-    fallbackTasks = tasks;
+    const container = ensureFallbackContainer();
+    container.tasks = tasks;
     return;
   }
 
@@ -158,6 +182,12 @@ export const createTask = async (title) => {
 
 export const updateTask = async (taskId, isDone) => {
   const tasks = await readTasks();
+  console.log("updateTask read", {
+    count: tasks.length,
+    taskId,
+    usingFallbackStore,
+    hasStore: Boolean(store),
+  });
   const updated = tasks.map((task) => {
     if (task.id === taskId) {
       return { ...task, isDone };
@@ -165,6 +195,10 @@ export const updateTask = async (taskId, isDone) => {
     return task;
   });
   await writeTasks(updated);
+  console.log("updateTask wrote", {
+    usingFallbackStore,
+    hasStore: Boolean(store),
+  });
   return true;
 };
 
