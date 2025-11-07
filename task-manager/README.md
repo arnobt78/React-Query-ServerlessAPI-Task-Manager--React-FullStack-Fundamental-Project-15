@@ -2,6 +2,10 @@
 
 A production-ready task manager that pairs a Vite-powered React frontend with serverless API routes. The app demonstrates how to fetch, mutate, and persist data with React Query while bundling the backend logic into the same repository for easy deployment to Vercel or Netlify.
 
+- **Live-Demo:** [https://react-query-task-manager.netlify.app/](https://react-query-task-manager.netlify.app/)
+
+![Screenshot 2025-11-07 at 15 16 03](https://github.com/user-attachments/assets/e88ea46d-9fa7-4c09-b292-33f1b149c2b1)
+
 ---
 
 ## Key Features
