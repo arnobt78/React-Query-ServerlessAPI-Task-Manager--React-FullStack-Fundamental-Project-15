@@ -3,6 +3,9 @@ import { connectLambda, getStore } from "@netlify/blobs";
 
 const STORE_NAME = "task-bud-store";
 const STORE_KEY = "task-list";
+const REMOTE_BASE_URL =
+  process.env.REMOTE_TASKS_API ||
+  "https://task-management-server-nyfr.onrender.com/api/tasks";
 
 const createFallbackNanoid =
   () =>
@@ -85,8 +88,16 @@ const ensureFallbackContainer = () => {
 };
 
 let store;
-let usingFallbackStore = false;
 let connectAttempted = false;
+let storageMode = "uninitialized"; // "blob" | "remote" | "memory"
+
+const useRemoteStorage = () => {
+  if (!REMOTE_BASE_URL) {
+    return false;
+  }
+  storageMode = "remote";
+  return true;
+};
 
 export const initializeStore = async (event) => {
   if (store) {
@@ -94,8 +105,10 @@ export const initializeStore = async (event) => {
   }
 
   if (!process.env.NETLIFY) {
-    usingFallbackStore = true;
-    ensureFallbackContainer();
+    if (!useRemoteStorage()) {
+      storageMode = "memory";
+      ensureFallbackContainer();
+    }
     return;
   }
 
@@ -125,11 +138,13 @@ export const initializeStore = async (event) => {
       const seeded = buildDefaultTasks();
       await store.setJSON(STORE_KEY, seeded);
     }
-    usingFallbackStore = false;
+    storageMode = "blob";
   } catch (error) {
     store = undefined;
-    usingFallbackStore = true;
-    ensureFallbackContainer();
+    if (!useRemoteStorage()) {
+      storageMode = "memory";
+      ensureFallbackContainer();
+    }
     console.warn(
       "Netlify Blob store unavailable, using in-memory storage instead",
       error
@@ -137,8 +152,42 @@ export const initializeStore = async (event) => {
   }
 };
 
+const remoteRequest = async (path = "", init = {}) => {
+  if (!REMOTE_BASE_URL) {
+    throw new Error("REMOTE_TASKS_API not configured");
+  }
+
+  const url = `${REMOTE_BASE_URL}${path}`;
+  const response = await fetch(url, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(init.headers || {}),
+    },
+    ...init,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Remote request failed: ${response.status} ${text}`);
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  return response.json();
+};
+
 const readTasks = async () => {
-  if (usingFallbackStore || !store) {
+  if (storageMode === "remote") {
+    const data = await remoteRequest();
+    if (data && Array.isArray(data.taskList)) {
+      return data.taskList;
+    }
+    return [];
+  }
+
+  if (storageMode === "memory" || !store) {
     const container = ensureFallbackContainer();
     return [...container.tasks];
   }
@@ -154,7 +203,15 @@ const readTasks = async () => {
 };
 
 const writeTasks = async (tasks) => {
-  if (usingFallbackStore || !store) {
+  if (storageMode === "remote") {
+    await remoteRequest("", {
+      method: "PUT",
+      body: JSON.stringify({ taskList: tasks }),
+    });
+    return;
+  }
+
+  if (storageMode === "memory" || !store) {
     const container = ensureFallbackContainer();
     container.tasks = tasks;
     return;
@@ -175,6 +232,18 @@ export const createTask = async (title) => {
     title,
     isDone: false,
   };
+
+  if (storageMode === "remote") {
+    const data = await remoteRequest("", {
+      method: "POST",
+      body: JSON.stringify({ title }),
+    });
+    if (data?.task) {
+      return data.task;
+    }
+    // If remote request did not return a task, fall back to local logic
+  }
+
   const updated = [...tasks, newTask];
   await writeTasks(updated);
   return newTask;
@@ -185,9 +254,18 @@ export const updateTask = async (taskId, isDone) => {
   console.log("updateTask read", {
     count: tasks.length,
     taskId,
-    usingFallbackStore,
+    storageMode,
     hasStore: Boolean(store),
   });
+
+  if (storageMode === "remote") {
+    await remoteRequest(`/${taskId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ isDone }),
+    });
+    return true;
+  }
+
   const updated = tasks.map((task) => {
     if (task.id === taskId) {
       return { ...task, isDone };
@@ -196,13 +274,18 @@ export const updateTask = async (taskId, isDone) => {
   });
   await writeTasks(updated);
   console.log("updateTask wrote", {
-    usingFallbackStore,
+    storageMode,
     hasStore: Boolean(store),
   });
   return true;
 };
 
 export const removeTask = async (taskId) => {
+  if (storageMode === "remote") {
+    await remoteRequest(`/${taskId}`, { method: "DELETE" });
+    return true;
+  }
+
   const tasks = await readTasks();
   const updated = tasks.filter((task) => task.id !== taskId);
   await writeTasks(updated);
