@@ -1,10 +1,8 @@
 let nanoid;
 
-try {
-  ({ nanoid } = require("nanoid"));
-} catch (error) {
+const createFallbackNanoid = () => {
   const crypto = require("crypto");
-  nanoid = (size = 21) => {
+  return (size = 21) => {
     let id = "";
     while (id.length < size) {
       id += crypto
@@ -14,7 +12,40 @@ try {
     }
     return id.slice(0, size);
   };
-  console.warn("nanoid import failed; using crypto fallback", error);
+};
+
+const useFallback = (reason) => {
+  nanoid = createFallbackNanoid();
+  if (reason) {
+    console.warn("Using crypto fallback for nanoid", reason);
+  }
+};
+
+const loadNanoid = () => {
+  try {
+    ({ nanoid } = require("nanoid/non-secure"));
+    return;
+  } catch (nonSecureError) {
+    console.warn(
+      "nanoid/non-secure import failed, trying ESM build",
+      nonSecureError
+    );
+  }
+
+  try {
+    ({ nanoid } = require("nanoid"));
+  } catch (error) {
+    useFallback(error);
+  }
+};
+
+if (process.env.NETLIFY) {
+  useFallback(new Error("Netlify runtime does not support require('nanoid')"));
+} else {
+  loadNanoid();
+  if (typeof nanoid !== "function") {
+    useFallback(new Error("nanoid package unavailable"));
+  }
 }
 
 // Shared in-memory storage for demo purposes
