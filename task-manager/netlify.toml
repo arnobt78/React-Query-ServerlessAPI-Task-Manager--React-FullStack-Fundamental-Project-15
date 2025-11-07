@@ -2,7 +2,20 @@
 [build]
   publish = "dist"
 
-# Redirect all requests to index.html for client-side routing
+# API redirects for serverless functions
+[[redirects]]
+  from = "/api/tasks"
+  to = "/.netlify/functions/tasks"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/tasks/*"
+  to = "/.netlify/functions/task/:splat"
+  status = 200
+  force = true
+
+# Redirect all other requests to index.html for client-side routing
 [[redirects]]
   from = "/*"
   to = "/index.html"

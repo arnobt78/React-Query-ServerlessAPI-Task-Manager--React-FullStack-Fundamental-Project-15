@@ -6,20 +6,30 @@ export const useFetchTasks = () => {
   const { isLoading, data, isError, error } = useQuery({
     queryKey: ["tasks"],
     queryFn: async () => {
-      const { data } = await customFetch.get("/");
-      return data;
+      try {
+        const { data } = await customFetch.get("/");
+        return data;
+      } catch (error) {
+        console.error("API Error:", error);
+        // Return fallback data structure
+        return { taskList: [] };
+      }
     },
     initialData: () => {
       const cachedTasks = readTasksFromStorage();
       if (cachedTasks) {
         return { taskList: cachedTasks };
       }
-      return undefined;
+      return { taskList: [] }; // Provide default structure
     },
     onSuccess: (result) => {
       if (result && Array.isArray(result.taskList)) {
         writeTasksToStorage(result.taskList);
       }
+    },
+    onError: (error) => {
+      console.error("Query Error:", error);
+      toast.error("Failed to load tasks. Please check your connection.");
     },
   });
   return { isLoading, isError, data };

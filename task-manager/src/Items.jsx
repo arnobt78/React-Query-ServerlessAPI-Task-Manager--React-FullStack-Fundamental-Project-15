@@ -1,18 +1,23 @@
-import SingleItem from './SingleItem';
-import { useFetchTasks } from './reactQueryCustomHooks';
+import SingleItem from "./SingleItem";
+import { useFetchTasks } from "./reactQueryCustomHooks";
 
 const Items = () => {
   const { isLoading, isError, data } = useFetchTasks();
 
   if (isLoading) {
-    return <p style={{ marginTop: '1rem ' }}>Loading...</p>;
+    return <p style={{ marginTop: "1rem " }}>Loading...</p>;
   }
   if (isError) {
-    return <p style={{ marginTop: '1rem ' }}>There was an error...</p>;
+    return <p style={{ marginTop: "1rem " }}>There was an error...</p>;
+  }
+
+  // Add safety check for data and taskList
+  if (!data || !data.taskList || !Array.isArray(data.taskList)) {
+    return <p style={{ marginTop: "1rem " }}>No tasks found...</p>;
   }
 
   return (
-    <div className='items'>
+    <div className="items">
       {data.taskList.map((item) => {
         return <SingleItem key={item.id} item={item} />;
       })}
