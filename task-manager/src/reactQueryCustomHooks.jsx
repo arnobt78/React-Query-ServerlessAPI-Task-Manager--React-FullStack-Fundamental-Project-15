@@ -7,13 +7,15 @@ import { readTasksFromStorage, writeTasksToStorage } from "./localStorageUtils";
 
 // Hook for fetching tasks from the API
 // Uses React Query's useQuery for automatic caching, refetching, and state management
+// Configured to prioritize cache over network requests - only fetches when absolutely necessary
 export const useFetchTasks = () => {
   const { isLoading, data, isError, error } = useQuery({
     // queryKey: unique identifier for this query in React Query's cache
     // Used for cache invalidation and refetching
     queryKey: ["tasks"],
     // queryFn: async function that fetches data from the API
-    // This is called automatically when the query needs to fetch/refetch data
+    // This is ONLY called when cache is empty or explicitly invalidated
+    // With our configuration, this should only run once on initial app load
     queryFn: async () => {
       try {
         // Make GET request to fetch tasks (empty string "" means use baseURL only)
@@ -28,6 +30,7 @@ export const useFetchTasks = () => {
     },
     // initialData: function that provides data before the first fetch completes
     // This enables instant UI rendering from localStorage cache (no loading spinner on first load)
+    // If localStorage has data, React Query will use it and skip the initial fetch
     initialData: () => {
       const cachedTasks = readTasksFromStorage();
       if (cachedTasks) {
@@ -48,6 +51,17 @@ export const useFetchTasks = () => {
       console.error("Query Error:", error);
       toast.error("Failed to load tasks. Please check your connection.");
     },
+    // CRITICAL: Only fetch if we don't have cached data
+    // This ensures API is only called when cache is truly empty
+    // With initialData from localStorage, this should rarely trigger
+    enabled: true, // Keep enabled, but staleTime prevents refetches
+    // cacheTime: How long unused data stays in cache (React Query v4)
+    // Set to 24 hours so data persists across sessions
+    cacheTime: 1000 * 60 * 60 * 24, // 24 hours
+    // staleTime: How long data is considered fresh
+    // Set to Infinity so cached data is always considered fresh
+    // This means React Query will NEVER automatically refetch - only manual mutations update cache
+    staleTime: Infinity, // Data never becomes stale - always use cache
   });
   return { isLoading, isError, data };
 };
@@ -83,9 +97,9 @@ export const useCreateTask = () => {
         }
         return { ...oldData, taskList: updatedTaskList };
       });
-      // Invalidate and refetch to ensure cache stays in sync with server
-      // This is a safety net in case server state differs from our optimistic update
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      // Note: We don't invalidate/refetch here because we already updated the cache optimistically
+      // The optimistic update gives instant feedback, and we trust the server response
+      // This eliminates unnecessary duplicate API calls
       // Show success notification to user
       toast.success("task added");
     },
@@ -131,8 +145,8 @@ export const useEditTask = () => {
         // Return updated cache data
         return { ...oldData, taskList: updatedTaskList };
       });
-      // Invalidate and refetch to sync with server state
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      // Note: We don't invalidate/refetch here because we already updated the cache optimistically
+      // This eliminates unnecessary duplicate API calls after toggling task status
     },
   });
   return { editTask };
@@ -167,8 +181,8 @@ export const useDeleteTask = () => {
         // Return updated cache data
         return { ...oldData, taskList: updatedTaskList };
       });
-      // Invalidate and refetch to ensure cache matches server state
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      // Note: We don't invalidate/refetch here because we already updated the cache optimistically
+      // This eliminates unnecessary duplicate API calls after deleting a task
     },
   });
   // Return deleteTask function and loading state
