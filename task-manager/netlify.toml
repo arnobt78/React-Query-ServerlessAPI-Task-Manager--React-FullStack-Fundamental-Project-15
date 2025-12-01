@@ -1,14 +1,25 @@
-# Netlify configuration for SPA routing
+# Netlify configuration for SPA routing and API proxying
+# This file tells Netlify how to handle requests and where to serve files from
+
 [build]
+  # Directory containing the built static files (output from `npm run build`)
   publish = "dist"
 
 # API redirects for serverless functions
+# These rules proxy API requests to Netlify Functions
+# The frontend calls /api/tasks, but Netlify routes it to the actual function
+
+# Route: GET/POST requests to /api/tasks (without task ID)
+# Proxies to the tasks serverless function
 [[redirects]]
   from = "/api/tasks"
   to = "/.netlify/functions/tasks"
-  status = 200
-  force = true
+  status = 200  # HTTP 200 (not 301/302) - transparent proxy, URL stays the same
+  force = true  # Override any other matching rules
 
+# Route: PATCH/DELETE requests to /api/tasks/:id (with task ID in path)
+# Also proxies to tasks function, passing the ID as :splat parameter
+# Example: /api/tasks/abc123 → /.netlify/functions/tasks/abc123
 [[redirects]]
   from = "/api/tasks/*"
   to = "/.netlify/functions/tasks/:splat"
@@ -16,6 +27,8 @@
   force = true
 
 # Redirect all other requests to index.html for client-side routing
+# This enables React Router or similar SPA routing - any unmatched route serves the app
+# The React app then handles client-side routing internally
 [[redirects]]
   from = "/*"
   to = "/index.html"
